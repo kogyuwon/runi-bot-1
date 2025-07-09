@@ -1,52 +1,58 @@
+import logging
 import os
-from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from flask import Flask
-import threading
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
+from keep_alive import keep_alive  # 웹 서버 유지용
 
-# Load .env
-load_dotenv()
+# 로깅 설정
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# 봇 토큰 (환경 변수에서 가져옴)
 TOKEN = os.getenv("TOKEN")
 
-# Flask for uptime check
-app_web = Flask(__name__)
-
-@app_web.route("/")
-def health():
-    return {"status": "alive"}
-
-# Telegram Bot Commands
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ 봇이 정상 작동 중입니다!")
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("/start - 시작\n/help - 도움말\n/status - 상태 확인")
-
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("💡 봇 상태: 정상 작동 중입니다!")
-
+# 새로운 멤버 입장 시 메시지 삭제
 async def auto_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.delete()
+    try:
+        await update.message.delete()
+    except Exception as e:
+        logger.warning(f"메시지 삭제 실패: {e}")
 
-# Start Flask in background
-def run_flask():
-    app_web.run(host="0.0.0.0", port=8080)
+# /start 명령어 처리
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ 봇이 정상적으로 작동 중입니다.")
 
-# Main Telegram bot function
-def run_bot():
+# /status 명령어 처리
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🟢 서버 상태: 정상")
+
+# /help 명령어 처리
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("/start - 봇 상태 확인\n/status - 서버 상태\n/help - 명령어 목록")
+
+# 메인 함수
+async def main():
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("status", status_command))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, auto_delete))
     app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, auto_delete))
 
-    print("✅ Telegram 봇이 작동 중입니다.")
-    app.run_polling()
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("help", help_command))
 
-# Run both Flask + Telegram
+    logger.info("✅ Telegram 봇 작동 시작")
+    await app.run_polling()
+
 if __name__ == "__main__":
-    threading.Thread(target=run_flask).start()
-    run_bot()
+    keep_alive()
+    import asyncio
+    asyncio.run(main())
