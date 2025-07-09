@@ -1,80 +1,63 @@
-import os
-import time
-import logging
-import requests
-from flask import Flask
-from threading import Thread
-from telegram import Update
-from telegram.ext import Application, MessageHandler, CommandHandler, ContextTypes, filters
+# main.py
 
-# Telegram Bot Token
+import logging
+import os
+from telegram import Update
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler,
+    ContextTypes, filters
+)
+from flask import Flask
+import threading
+
+# Telegram 토큰 환경변수에서 불러오기
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# 로그 설정
+# 로깅 설정
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Flask 서버 설정
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return {"status": "alive"}
-
-@app.route('/health')
-def health():
-    return {"status": "healthy", "timestamp": time.time()}
-
-def run_flask():
-    app.run(host='0.0.0.0', port=10000)
-
-def keep_alive():
-    Thread(target=run_flask, daemon=True).start()
-
-# 입장/퇴장 메시지 자동 삭제
-async def auto_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        if update.message and (update.message.new_chat_members or update.message.left_chat_member):
-            await update.message.delete()
-    except Exception as e:
-        logger.error(f"메시지 삭제 오류: {e}")
-
 # /start 명령어
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ 봇이 정상 작동 중입니다!")
+    await update.message.reply_text("🤖 루니봇이 작동을 시작했습니다!")
 
-# /status 명령어
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📡 상태: 온라인\n🧹 입장/퇴장 메시지 자동 삭제 중!")
+# 입장/퇴장 메시지 삭제
+async def auto_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.delete()
 
-# 메인 실행 함수
+# Flask 앱으로 웹서버 실행 (Render 유지를 위해)
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Running!"
+
+@app.route("/health")
+def health():
+    return {"status": "alive"}
+
+def run_flask():
+    app.run(host="0.0.0.0", port=10000)
+
+# 메인 함수
 async def main():
-    if not TOKEN:
-        logger.error("환경변수에 TELEGRAM_BOT_TOKEN이 설정되지 않았습니다.")
-        return
-
     application = Application.builder().token(TOKEN).build()
 
-    # 핸들러 등록
+    application.add_handler(CommandHandler("start", start_command))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, auto_delete))
     application.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, auto_delete))
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("status", status_command))
 
     await application.initialize()
     await application.start()
-    logger.info("🤖 봇이 시작되었습니다.")
-    await application.updater.start_polling()
+    await application.updater.start_polling()  # 여기를 없애야 함!
+    logger.info("✅ 봇이 작동 중입니다.")
 
-    # 종료 방지
-    import asyncio
-    await asyncio.Event().wait()
+    await application.idle()
 
-if __name__ == '__main__':
-    keep_alive()
-
+if __name__ == "__main__":
+    threading.Thread(target=run_flask).start()
     import asyncio
     asyncio.run(main())
