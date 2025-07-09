@@ -1,63 +1,61 @@
-# main.py
-
-import logging
 import os
+from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler,
-    ContextTypes, filters
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from flask import Flask
-import threading
 
-# Telegram 토큰 환경변수에서 불러오기
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# 환경 변수 로드
+load_dotenv()
+TOKEN = os.getenv("TOKEN")
 
-# 로깅 설정
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# Flask 앱 생성 (헬스 체크용)
+app_web = Flask(__name__)
 
-# /start 명령어
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 루니봇이 작동을 시작했습니다!")
+@app_web.route('/')
+def home():
+    return {'status': 'alive'}
 
-# 입장/퇴장 메시지 삭제
+# 메시지 자동 삭제
 async def auto_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.delete()
 
-# Flask 앱으로 웹서버 실행 (Render 유지를 위해)
-app = Flask(__name__)
+# /start 명령어 처리
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ 봇이 정상 작동 중입니다!")
 
-@app.route("/")
-def home():
-    return "Running!"
+# /help 명령어 처리
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("/start - 봇 시작\n/help - 도움말")
 
-@app.route("/health")
-def health():
-    return {"status": "alive"}
+# /status 명령어 처리
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("💡 봇 상태: 정상 작동 중입니다!")
 
-def run_flask():
-    app.run(host="0.0.0.0", port=10000)
-
-# 메인 함수
+# 메인 실행 함수
 async def main():
-    application = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).build()
 
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, auto_delete))
-    application.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, auto_delete))
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, auto_delete))
+    app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, auto_delete))
 
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()  # 여기를 없애야 함!
-    logger.info("✅ 봇이 작동 중입니다.")
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    print("✅ Telegram 봇이 작동 중입니다.")
 
-    await application.idle()
-
-if __name__ == "__main__":
-    threading.Thread(target=run_flask).start()
     import asyncio
+    await asyncio.Event().wait()
+
+# 실행부
+if __name__ == "__main__":
+    import threading
+    import asyncio
+
+    # Flask 서버 백그라운드 실행
+    threading.Thread(target=lambda: app_web.run(host="0.0.0.0", port=8080)).start()
+
+    # 텔레그램 봇 실행
     asyncio.run(main())
